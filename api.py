@@ -4,6 +4,7 @@ from typing import Any
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
+from pydantic import AliasChoices, ConfigDict
 
 from database import (
     add_employee,
@@ -14,6 +15,7 @@ from database import (
     login_user,
     remove_employee,
     search_employees,
+    update_employee,
 )
 
 
@@ -41,14 +43,28 @@ class LoginRequest(BaseModel):
 
 
 class EmployeeCreate(BaseModel):
-    employee_code: str = Field(min_length=1, max_length=30)
-    name: str = Field(min_length=1, max_length=150)
+    model_config = ConfigDict(populate_by_name=True)
+
+    employee_code: str = Field(
+        min_length=1,
+        max_length=30,
+        validation_alias=AliasChoices("employee_code", "employeeCode"),
+    )
+    name: str = Field(
+        min_length=1,
+        max_length=150,
+        validation_alias=AliasChoices("name", "full_name", "fullName"),
+    )
     gender: str | None = None
     phone: str | None = None
     email: str | None = None
     department: str | None = None
     position: str | None = None
     salary: float = Field(default=0, ge=0)
+
+
+class EmployeeUpdate(EmployeeCreate):
+    status: str = Field(default="active", pattern="^(active|inactive)$")
 
 
 @app.on_event("startup")
@@ -119,6 +135,37 @@ def create_employee(employee: EmployeeCreate):
             status_code=409,
             detail="Employee code or email already exists",
         )
+
+
+@app.put("/api/employees/{employee_id}")
+@app.patch("/api/employees/{employee_id}")
+def edit_employee(employee_id: int, employee: EmployeeUpdate):
+    try:
+        updated_employee = update_employee(
+            employee_id=employee_id,
+            employee_code=employee.employee_code,
+            name=employee.name,
+            gender=employee.gender,
+            phone=employee.phone,
+            email=employee.email,
+            department=employee.department,
+            position=employee.position,
+            salary=employee.salary,
+            status=employee.status,
+        )
+    except sqlite3.IntegrityError:
+        raise HTTPException(
+            status_code=409,
+            detail="Employee code or email already exists",
+        )
+
+    if updated_employee is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Employee not found",
+        )
+
+    return updated_employee
 
 
 @app.delete("/api/employees/{employee_id}")

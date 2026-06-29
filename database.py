@@ -271,6 +271,7 @@ def search_employees(keyword: str) -> list[dict[str, Any]]:
 
 def update_employee(
     employee_id: int,
+    employee_code: str,
     name: str,
     gender: str | None,
     phone: str | None,
@@ -279,12 +280,13 @@ def update_employee(
     position: str | None,
     salary: float,
     status: str,
-) -> bool:
+) -> dict[str, Any] | None:
     with get_connection() as connection:
         cursor = connection.execute(
             """
             UPDATE employees
             SET
+                employee_code = ?,
                 name = ?,
                 gender = ?,
                 phone = ?,
@@ -297,6 +299,7 @@ def update_employee(
             WHERE id = ?
             """,
             (
+                employee_code.strip(),
                 name.strip(),
                 clean_optional(gender),
                 clean_optional(phone),
@@ -311,7 +314,19 @@ def update_employee(
 
         connection.commit()
 
-        return cursor.rowcount > 0
+        if cursor.rowcount == 0:
+            return None
+
+        employee = connection.execute(
+            """
+            SELECT *
+            FROM employees
+            WHERE id = ?
+            """,
+            (employee_id,),
+        ).fetchone()
+
+        return dict(employee) if employee else None
 
 
 def remove_employee(employee_id: int) -> bool:
